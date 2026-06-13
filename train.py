@@ -8,19 +8,20 @@ from vit import ViT
 
 batch_size, ishape, log_steps = 256, (32, 32, 3), 50
 X_train, Y_train, X_test, Y_test = datasets.cifar()
-X_train, X_test = X_train.permute(0,2,3,1), X_test.permute(0,2,3,1)
+X_train, X_test = X_train.permute(0,3,2,1), X_test.permute(0,3,2,1)
 X_train, X_test = X_train.float() / 255.0, X_test.float() / 255.0
 X_test, Y_test = X_test[:1000], Y_test[:1000] # limited by laptop VRAM
 
-def random_flip(x:Tensor): return (Tensor.rand(x.shape[0],1,1,1) < 0.5).where(x.flip(-1), x).contiguous()
+def random_flip(x:Tensor): return (Tensor.rand(x.shape[0],1,1,1) < 0.5).where(x.flip(1), x).contiguous()
 def random_crop(x:Tensor,crop_size=32):
-  B, h, w, _ = x.shape
+  B, w, h, c = x.shape
+  # chw vs whc
   Xs = Tensor.randint(B, low=0, high=h-crop_size).reshape(B,1,1,1)
   Ys = Tensor.randint(B, low=0, high=w-crop_size).reshape(B,1,1,1)
-  Xi = Tensor.arange(crop_size, dtype=dtypes.uint32).reshape(1,1,1,crop_size)
+  Xi = Tensor.arange(crop_size, dtype=dtypes.uint32).reshape(1,crop_size,1,1)
   Yi = Tensor.arange(crop_size, dtype=dtypes.uint32).reshape(1,1,crop_size,1)
-  x_strip = (Xs + Xi).expand(-1, 3, h, -1)
-  y_strip = (Ys + Yi).expand(-1, 3, crop_size, crop_size)
+  x_strip = (Xs + Xi).expand(-1, crop_size, h, c)
+  y_strip = (Ys + Yi).expand(-1, crop_size, crop_size, c)
   return x.gather(1, x_strip).gather(2, y_strip)
 
 # TODO: implement myself, batch-wise augmentation
@@ -47,7 +48,7 @@ def one_cycle_lr(optim,total_steps,initial_lr,warmup_weight:float=0.3,max_lr:flo
     optim.lr.assign(Tensor([lr]))
   return fn
 
-model = ViT(192, 3, 10, 4, 32, 32, 3, 10)
+model = ViT(192, 3, 10, 10, 4, *X_train.shape[1:])
 optim = AdamW(get_parameters(model))
 total_steps = 1000
 lr_scheduler = one_cycle_lr(optim,total_steps, 1e-5)
