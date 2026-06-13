@@ -79,8 +79,7 @@ for n in range(total_steps):
   loss = step(*random_batch())
   Tensor.training = False
   if n % log_steps == 0:
-    probs = model(X_test).softmax(axis=-1)
-    acc = (Y_test == probs.argmax(-1)).mean()
-    print(f"step={n}\t\tloss={loss.item():.2f}, valid acc={100*acc.item():.2f}%f")
-  else:
-    print(f"step={n}\t\tloss={loss.item():.2f}")
+    logits = model(X_test)
+    valid_loss = logits.sparse_categorical_crossentropy(Y_test)
+    acc = (Y_test == logits.softmax(axis=-1).argmax(-1)).mean()
+    print(f"step={n}\t\tloss={loss.item():.2f}, valid_loss={valid_loss.item():.2f}, valid acc={100*acc.item():.2f}%f")
