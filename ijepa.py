@@ -1,6 +1,7 @@
 from tinygrad.tensor import Tensor
 from tinygrad.nn import Linear, RMSNorm, Conv2d, LayerNorm
 import math
+from masks import apply_masks
 
 def sincos_posemb_2d(w,h,d) -> Tensor: #(W*H,D)
   emb_h = sincos_posemb_1d(h,d)
@@ -42,15 +43,11 @@ class ViT:
     pn = int(math.sqrt(self.N))
     self.pos_emb = sincos_posemb_2d(pn, pn, dim)
     self.out_norm = RMSNorm(dim)
-  def __call__(self, img:Tensor, masks=None, dropout_p:float=0.1) -> Tensor:
+  def __call__(self, img:Tensor, masks:list[Tensor]|None=None, dropout_p:float=0.1) -> Tensor:
     # img (B,H,W,C)
-    B = img.shape[0]
     x = self.patch_emb(img).flatten(2).transpose(1,2) # (B,N,D)
     x = x + self.pos_emb
-
-    if masks is not None: # apply masks
-      pass
-
+    if masks is not None: x = apply_masks(x, masks) # (B, masked patches, D)
     for blk in self.blocks: x = blk(x, dropout_p=dropout_p)
     return self.out_norm(x)
 
