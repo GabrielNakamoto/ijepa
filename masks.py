@@ -19,8 +19,8 @@ def sample_block_mask(x:Tensor, b_size:tuple[int,int], min_keep=4, acceptable_re
   h, w = b_size
   _, H, W, _ = x.shape
   while True:
-    top = Tensor.randint(1, low=0, high=int(H)-h)
-    left = Tensor.randint(1, low=0, high=int(W)-w)
+    top = Tensor.randint(1, low=0, high=int(H)-h).item()
+    left = Tensor.randint(1, low=0, high=int(W)-w).item()
     mask = Tensor.zeros(H,W,dtype=dtypes.uint32)
     mask[top:top+h, left:left+w] = 1
 
@@ -34,8 +34,8 @@ def sample_block_mask(x:Tensor, b_size:tuple[int,int], min_keep=4, acceptable_re
       mask_c[top:top+h, left:left+w] = 0
       return mask, mask_c
 
-def generate_masks(X:Tensor, cfg:dict) -> tuple[Tensor, Tensor]:
-  def _stack(T:list[Tensor]): return T[0].stack(*T[1:])
+def generate_masks(X:Tensor, cfg:dict) -> tuple[list[Tensor], list[Tensor]]:
+  def _stack(T:list[Tensor]): return T[0].unsqueeze(0) if len(T) == 1 else T[0].stack(*T[1:])
   plen = elen = X.shape[1]*X.shape[2]
   pred_masks, enc_masks = [], []
   for _ in range(X.shape[0]):
@@ -56,7 +56,7 @@ def generate_masks(X:Tensor, cfg:dict) -> tuple[Tensor, Tensor]:
     Mp, Me = _stack(Mp), _stack(Me)
     Mp, Me = Mp[:,:plen], Me[:,:elen]
     pred_masks.append(Mp); enc_masks.append(Me)
-  return _stack(pred_masks), _stack(enc_masks)
+  return pred_masks, enc_masks
 
 def apply_masks(X:Tensor, masks:Tensor):
   # X(bchsz, num_patches, dim)

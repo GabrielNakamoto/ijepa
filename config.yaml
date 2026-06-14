@@ -1,5 +1,12 @@
 model:
   vit_name: 'vit_base'
+  encoder:
+    embed_dim: 768
+    heads: 12
+    depth: 12
+  predictor:
+    embed_dim: 0
+    depth: 12
 mask:
   aspect_ratio:
     - 0.75
