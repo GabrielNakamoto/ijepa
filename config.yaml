@@ -4,7 +4,7 @@ model:
     heads: 12
     depth: 12
   predictor:
-    embed_dim: 0
+    embed_dim: 480
     depth: 12
 mask:
   aspect_ratio:

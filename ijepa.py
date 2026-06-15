@@ -68,7 +68,7 @@ class ViTPredictor:
     x += apply_masks(p, ctx_masks) # (batch size, n masked patches, pred dim)
 
     pos_emb = self.pos_emb.repeat(B, 1, 1) # (batch size, )
-    pos_emb = apply_masks(p, pred_masks)
+    pos_emb = apply_masks(pos_emb, pred_masks)
     pos_emb = pos_emb.repeat_interleave(len(ctx_masks), dim=0) # ()
     pred_tokens = self.mask_token.repeat(pos_emb.shape[0], pos_emb.shape[1], 1)
     pred_tokens += pos_emb
@@ -90,8 +90,8 @@ class iJEPA:
   def __call__(self, imgs:Tensor, masks_enc:list[Tensor], masks_pred:list[Tensor]) -> tuple[Tensor, Tensor]:
     # compute target representation
     h = self.target_encoder(imgs).detach().layernorm(-1) # normalize feature dim
-    h = apply_masks(h, masks_pred).repeat_interleave(len(masks_enc))
+    h = apply_masks(h, masks_enc).repeat_interleave(len(masks_enc))
     # predict representation from context
-    z = self.encoder(imgs)
+    z = self.encoder(imgs, masks=masks_enc)
     z = self.predictor(z, masks_enc, masks_pred)
     return h, z
