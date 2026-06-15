@@ -63,4 +63,4 @@ def apply_masks(X:Tensor, masks:list[Tensor]) -> Tensor:
   # X(bchsz, num_patches, feature dim)
   def _proc(m): return X.gather(1, m.unsqueeze(-1).repeat(1,1,X.shape[-1]))
   xs = [_proc(m) for m in masks]
-  return xs[0] if len(xs) == 1 else xs[0].cat(*xs[1:])
+  return xs[0] if len(xs) == 1 else xs[0].cat(*xs[1:], dim=0)

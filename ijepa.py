@@ -1,5 +1,5 @@
 from tinygrad.tensor import Tensor
-from tinygrad.nn import Linear, RMSNorm, Conv2d
+from tinygrad.nn import Linear, LayerNorm, RMSNorm, Conv2d
 import math
 from masks import apply_masks
 
@@ -35,14 +35,14 @@ class TransformerBlock:
 
 # https://arxiv.org/pdf/2010.11929
 class ViT:
-  def __init__(self, patch_size:int, dim:int, n_heads:int, depth:int, img_shape):
-    h, w, c = img_shape
-    self.dim, self.N = dim, (h//patch_size) * (w//patch_size)
+  def __init__(self, num_patches:int, patch_size:int, dim:int, n_heads:int, depth:int, img_shape):
+    _, _, c = img_shape
+    self.dim = dim
     self.blocks = [TransformerBlock(dim, n_heads) for _ in range(depth)]
     self.patch_emb = Conv2d(c, dim, kernel_size=patch_size, stride=patch_size)
-    pn = int(math.sqrt(self.N))
+    pn = int(math.sqrt(num_patches))
     self.pos_emb = sincos_posemb_2d(pn, pn, dim)
-    self.out_norm = RMSNorm(dim)
+    self.out_norm = LayerNorm(dim)
   def __call__(self, img:Tensor, masks:list[Tensor]|None=None, dropout_p:float=0.1) -> Tensor:
     # img (B,C,W,H)
     x = self.patch_emb(img).flatten(2).transpose(1,2) # (B,N,D)
@@ -53,19 +53,27 @@ class ViT:
 
 class ViTPredictor:
   def __init__(self, num_patches:int, ctx_dim:int, pred_dim:int, n_heads:int, depth:int):
+    self.dim = pred_dim
     self.pred_emb = Linear(ctx_dim, pred_dim)
     self.blocks = [TransformerBlock(pred_dim, n_heads) for _ in range(depth)]
-    self.out_norm = RMSNorm(pred_dim)
+    self.out_norm = LayerNorm(pred_dim)
     pn = int(math.sqrt(num_patches))
     self.pos_emb = sincos_posemb_2d(pn,pn,pred_dim)
+    self.num_patches = num_patches
+    self.mask_token = Tensor.zeros(1, 1, pred_dim)
   def __call__(self, x:Tensor, ctx_masks, pred_masks, dropout_p:float=0.1) -> Tensor:
-    B = x.shape[0] // len(ctx_masks)
+    B = x.shape[0] // len(ctx_masks) # batch size?
     x = self.pred_emb(x)
     p = self.pos_emb.repeat(B, 1, 1)
-    x += apply_masks(p, pred_masks)
+    x += apply_masks(p, ctx_masks) # (batch size, n masked patches, pred dim)
 
-    p = self.pos_emb.repeat(B, 1, 1)
-    p = apply_masks(p, pred_masks)
+    pos_emb = self.pos_emb.repeat(B, 1, 1) # (batch size, )
+    pos_emb = apply_masks(p, pred_masks)
+    pos_emb = pos_emb.repeat_interleave(len(ctx_masks), dim=0) # ()
+    pred_tokens = self.mask_token.repeat(pos_emb.shape[0], pos_emb.shape[1], 1)
+    pred_tokens += pos_emb
+    x = x.repeat(len(pred_masks), 1, 1)
+    x = x.cat(pos_emb, dim=1)
 
     for blk in self.blocks: x = blk(x, dropout_p=dropout_p)
     x = self.out_norm(x)
@@ -74,8 +82,10 @@ class ViTPredictor:
 # https://arxiv.org/pdf/2301.08243
 class iJEPA:
   def __init__(self, img_shape, enc_dim:int, pred_dim:int, enc_depth:int, pred_depth:int, n_heads:int, patch_size:int):
-    self.encoder = ViT(patch_size, enc_dim, n_heads, enc_depth, img_shape)
-    self.target_encoder = ViT(patch_size, enc_dim, n_heads, enc_depth, img_shape)
+    h, w, _ = img_shape
+    num_patches = (h // patch_size) * (w // patch_size)
+    self.encoder = ViT(num_patches, patch_size, enc_dim, n_heads, enc_depth, img_shape)
+    self.target_encoder = ViT(num_patches, patch_size, enc_dim, n_heads, enc_depth, img_shape)
     self.predictor = ViTPredictor(num_patches, enc_dim, pred_dim, n_heads, pred_depth)
   def __call__(self, imgs:Tensor, masks_enc:list[Tensor], masks_pred:list[Tensor]) -> tuple[Tensor, Tensor]:
     # compute target representation
