@@ -35,28 +35,28 @@ def sample_block_mask(shape, b_size:tuple[int,int], min_keep=4, acceptable_regio
       return mask.squeeze(), mask_c
 
 # shape (batch, patch height grid, patch width grid, channels)
-def generate_masks(shape, cfg:dict) -> tuple[list[list[Tensor]], list[list[Tensor]]]:
+def generate_masks(shape, cfg:dict) -> tuple[list[Tensor], list[Tensor]]:
   plen = elen = shape[1]*shape[2]
-  pred_masks, enc_masks = [], []
-  for i in range(shape[0]):
-    print(f"Generated mask {i+1}/{shape[0]}", end='\r', flush=True)
+  pred_masks, enc_masks = [[]] * cfg['num_pred_masks'], [[]] * cfg['num_enc_masks']
+  for _ in range(shape[0]):
+    # print(f"Generated mask {i+1}/{shape[0]}", end='\r', flush=True)
     p_size = sample_block_size(shape, cfg['pred_mask_scale'], cfg['aspect_ratio'])
     e_size = sample_block_size(shape, cfg['enc_mask_scale'], (1.,1.))
-    Mp, Mc, Me = [], [], []
+    Mc = []
     # choose prediction masks first so context doesn't overlap
-    for _ in range(cfg['num_pred_masks']):
+    for i in range(cfg['num_pred_masks']):
       mp, mc = sample_block_mask(shape, p_size)
       plen = min(plen, mp.size)
-      Mp.append(mp); Mc.append(mc)
+      pred_masks[i].append(mp)
+      Mc.append(mc)
 
-    for _ in range(cfg['num_enc_masks']):
+    for i in range(cfg['num_enc_masks']):
       me, _ = sample_block_mask(shape, e_size, acceptable_regions=Mc)
       elen = min(elen, me.size)
-      Me.append(me)
+      enc_masks[i].append(me)
 
-    # Mp, Me = np.stack(Mp), np.stack(Me)
-    # Mp, Me = Mp[:,:plen], Me[:,:elen]
-    pred_masks.append([Tensor(t) for t in Mp]); enc_masks.append([Tensor(t) for t in Me])
+  pred_masks = [Tensor(np.stack([p[:plen] for p in pp], axis=0)) for pp in pred_masks]
+  enc_masks = [Tensor(np.stack([e[:elen] for e in ee], axis=0)) for ee in enc_masks]
   return pred_masks, enc_masks
 
 def apply_masks(X:Tensor, masks:list[Tensor]) -> Tensor:
