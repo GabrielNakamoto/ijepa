@@ -3,16 +3,16 @@ from tinygrad.nn import Linear, RMSNorm, Conv2d, LayerNorm
 import math
 from masks import apply_masks
 
-def sincos_posemb_2d(w,h,d) -> Tensor: #(W*H,D)
-  emb_h = sincos_posemb_1d(h,d)
-  emb_w = sincos_posemb_1d(w,d)
-  return emb_h.cat(emb_w)
+def sincos_posemb_2d(w,h,d):
+  grid_x, grid_y = Tensor.arange(w).meshgrid(Tensor.arange(h))
+  emb_h = sincos_posemb_1d_from_grid(grid_x,d//2)
+  emb_w = sincos_posemb_1d_from_grid(grid_y,d//2)
+  return emb_h.cat(emb_w, dim=-1)
 
-def sincos_posemb_1d(n,d) -> Tensor: #(N,D)
+def sincos_posemb_1d_from_grid(grid,d) -> Tensor: #(N,D)
   w_k = (1./1000) ** (2. / d * Tensor.arange(d//2))
-  p_t = Tensor.arange(n)
-  out = Tensor.einsum('m,d->md', p_t, w_k).reshape(n,d//2)
-  return out.sin().stack(out.cos(), dim=-1).reshape(n,d)
+  out = Tensor.einsum('m,d->md', grid.flatten(), w_k).reshape(-1,d//2) # outer product
+  return out.sin().cat(out.cos(), dim=-1)
 
 class TransformerBlock:
   def __init__(self, dim, n_heads):
@@ -37,15 +37,16 @@ class TransformerBlock:
 class ViT:
   def __init__(self, patch_size:int, dim:int, n_heads:int, depth:int, img_shape):
     h, w, c = img_shape
-    self.dim, self.N = dim, int((h*w)/(patch_size*patch_size))
+    self.dim, self.N = dim, (h//patch_size) * (w//patch_size)
     self.blocks = [TransformerBlock(dim, n_heads) for _ in range(depth)]
     self.patch_emb = Conv2d(c, dim, kernel_size=patch_size, stride=patch_size)
     pn = int(math.sqrt(self.N))
     self.pos_emb = sincos_posemb_2d(pn, pn, dim)
     self.out_norm = RMSNorm(dim)
   def __call__(self, img:Tensor, masks:list[Tensor]|None=None, dropout_p:float=0.1) -> Tensor:
-    # img (B,H,W,C)
+    # img (B,C,W,H)
     x = self.patch_emb(img).flatten(2).transpose(1,2) # (B,N,D)
+    print(x.shape, self.pos_emb.shape)
     x = x + self.pos_emb
     if masks is not None: x = apply_masks(x, masks) # (B, masked patches, D)
     for blk in self.blocks: x = blk(x, dropout_p=dropout_p)
