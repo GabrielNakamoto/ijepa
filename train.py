@@ -15,15 +15,18 @@ batch_size = 512
 
 def load_stl10() -> Tensor: 
   tt = tar_extract(Tensor.from_url("http://ai.stanford.edu/~acoates/stl10/stl10_binary.tar.gz", gunzip=True))
-  return tt['stl10_binary/unlabeled_X.bin'].reshape(-1, 3, 96, 96)#.to(None)
+  return tt['stl10_binary/unlabeled_X.bin'].reshape(-1, 3, 96, 96).to('CPU')
 
 def random_batch_unsupervised():
-  idx = Tensor.randint(batch_size, high=int(X.shape[0]))
-  return X[idx], *generate_masks((batch_size, 96 // patch_size, 96 // patch_size, 3), mask_cfg)
+  idx = Tensor.randint(batch_size, high=int(X.shape[0]), device=X.device)
+  return X[idx].to(None), *generate_masks((batch_size, 96 // patch_size, 96 // patch_size, 3), mask_cfg)
 
 X = load_stl10()
 model = iJEPA((96,96,3), enc_cfg['embed_dim'], pred_cfg['embed_dim'], enc_cfg['depth'], pred_cfg['depth'], 12, cfg['mask']['patch_size'])
-optim = AdamW(get_parameters(model))
+params = get_parameters(model)
+N_params = sum(t.numel() for t in params)
+print(f"{N_params // 1e6}M params")
+optim = AdamW(params)
 
 @TinyJit
 def step(imgs, enc_masks, pred_masks):
@@ -42,5 +45,7 @@ def step(imgs, enc_masks, pred_masks):
 # 100k / batch_size = steps_per_epoch
 target_epochs = 4
 for i in range(target_epochs * (X.shape[0] // batch_size)):
+  Tensor.training = True
   loss = step(*random_batch_unsupervised())
+  Tensor.training = False
   print(f"step={i}, train loss={loss.item():.2f}")

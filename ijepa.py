@@ -61,23 +61,29 @@ class ViTPredictor:
     self.pos_emb = sincos_posemb_2d(pn,pn,pred_dim)
     self.num_patches = num_patches
     self.mask_token = Tensor.zeros(1, 1, pred_dim)
-  def __call__(self, x:Tensor, ctx_masks, pred_masks, dropout_p:float=0.1) -> Tensor:
-    B = x.shape[0] // len(ctx_masks) # batch size?
+    self.head = Linear(pred_dim, ctx_dim)
+  def __call__(self, x:Tensor, masks_x, masks, dropout_p:float=0.1) -> Tensor:
+    B = x.shape[0] // len(masks_x) # bchsz
     x = self.pred_emb(x)
-    p = self.pos_emb.repeat(B, 1, 1)
-    x += apply_masks(p, ctx_masks) # (batch size, n masked patches, pred dim)
+    p = self.pos_emb.repeat(B, 1, 1) 
+    x += apply_masks(p, masks_x)
 
-    pos_emb = self.pos_emb.repeat(B, 1, 1) # (batch size, )
-    pos_emb = apply_masks(pos_emb, pred_masks)
-    pos_emb = pos_emb.repeat_interleave(len(ctx_masks), dim=0) # ()
+    N_ctx = x.shape[1]
+
+    pos_emb = self.pos_emb.repeat(B, 1, 1)
+    pos_emb = apply_masks(pos_emb, masks)
+    pos_emb = pos_emb.repeat_interleave(len(masks_x), dim=0)
     pred_tokens = self.mask_token.repeat(pos_emb.shape[0], pos_emb.shape[1], 1)
     pred_tokens += pos_emb
-    x = x.repeat(len(pred_masks), 1, 1)
-    x = x.cat(pos_emb, dim=1)
+    x = x.repeat(len(masks), 1, 1)
+    x = x.cat(pred_tokens, dim=1)
 
     for blk in self.blocks: x = blk(x, dropout_p=dropout_p)
     x = self.out_norm(x)
-    return x
+
+    # return preds for mask token
+    x = x[:, N_ctx:]
+    return self.head(x)
 
 # https://arxiv.org/pdf/2301.08243
 class iJEPA:
@@ -89,8 +95,10 @@ class iJEPA:
     self.predictor = ViTPredictor(num_patches, enc_dim, pred_dim, n_heads, pred_depth)
   def __call__(self, imgs:Tensor, masks_enc:list[Tensor], masks_pred:list[Tensor]) -> tuple[Tensor, Tensor]:
     # compute target representation
-    h = self.target_encoder(imgs).detach().layernorm(-1) # normalize feature dim
-    h = apply_masks(h, masks_enc).repeat_interleave(len(masks_enc))
+    h = self.target_encoder(imgs.detach()).layernorm(-1) # (B, N, enc_dim)
+    h = apply_masks(h, masks_pred) # (B, N_masked, enc_dim)
+    h = h.repeat_interleave(len(masks_enc), dim=0)
+
     # predict representation from context
     z = self.encoder(imgs, masks=masks_enc)
     z = self.predictor(z, masks_enc, masks_pred)

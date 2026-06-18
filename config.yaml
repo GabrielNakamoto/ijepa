@@ -1,11 +1,11 @@
 model:
   encoder:
-    embed_dim: 768
-    heads: 12
-    depth: 12
+    embed_dim: 512
+    heads: 8
+    depth: 6
   predictor:
-    embed_dim: 480
-    depth: 12
+    embed_dim: 384
+    depth: 6
 mask:
   aspect_ratio:
     - 0.75

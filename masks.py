@@ -57,10 +57,10 @@ def generate_masks(shape, cfg:dict) -> tuple[list[Tensor], list[Tensor]]:
 
   pred_masks = [Tensor(np.stack([p[:plen] for p in pp], axis=0)) for pp in pred_masks.values()]
   enc_masks = [Tensor(np.stack([e[:elen] for e in ee], axis=0)) for ee in enc_masks.values()]
-  return pred_masks, enc_masks
+  return enc_masks, pred_masks
 
 def apply_masks(X:Tensor, masks:list[Tensor]) -> Tensor:
   # X(bchsz, num_patches, feature dim)
   def _proc(m): return X.gather(1, m.unsqueeze(-1).repeat(1,1,X.shape[-1])) # repeat mask along embed dim
   xs = [_proc(m) for m in masks]
-  return xs[0] if len(xs) == 1 else xs[0].cat(*xs[1:], dim=0)
+  return xs[0] if len(xs) == 1 else xs[0].cat(*xs[1:], dim=0) # (len(masks) * bchsz, num_masked, feature dim)
