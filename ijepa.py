@@ -16,9 +16,7 @@ def sincos_posemb_1d_from_grid(grid,d) -> Tensor: #(N,D)
 
 class TransformerBlock:
   def __init__(self, dim, n_heads):
-    self.dim = dim
-    self.n_heads = n_heads
-    self.head_dim = dim // n_heads
+    self.dim, self.n_heads, self.head_dim = dim, n_heads, dim // n_heads
     self.qkv_proj = Linear(dim, dim*3)
     self.attn_norm = RMSNorm(dim)
     self.mlp = [Linear(dim, dim * 4), Tensor.swish, Linear(dim * 4, dim)]
@@ -26,7 +24,8 @@ class TransformerBlock:
     self.attn_proj = Linear(dim, dim)
   def _attention(self, x:Tensor, dropout_p:float=0.0) -> Tensor:
     B, N = x.shape[:2]
-    q, k, v = [t.squeeze(2).transpose(1,2) for t in self.qkv_proj(x).reshape(B,N,3,self.n_heads,self.head_dim).split(1, dim=2)]
+    q, k, v = [t.squeeze(2).transpose(1,2) for t in
+        self.qkv_proj(x).reshape(B,N,3,self.n_heads,self.head_dim).split(1, dim=2)]
     attn = q.scaled_dot_product_attention(k, v, dropout_p=dropout_p)
     return self.attn_proj(attn.reshape((B,N,self.dim)))
   def __call__(self, x:Tensor, dropout_p:float=0.0) -> Tensor:

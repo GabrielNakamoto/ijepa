@@ -22,7 +22,7 @@ def random_batch_unsupervised():
   return X[idx].to(None), *generate_masks((batch_size, 96 // patch_size, 96 // patch_size, 3), mask_cfg)
 
 X = load_stl10()
-model = iJEPA((96,96,3), enc_cfg['embed_dim'], pred_cfg['embed_dim'], enc_cfg['depth'], pred_cfg['depth'], 12, cfg['mask']['patch_size'])
+model = iJEPA((96,96,3), enc_cfg['embed_dim'], pred_cfg['embed_dim'], enc_cfg['depth'], pred_cfg['depth'], enc_cfg['heads'], cfg['mask']['patch_size'])
 params = get_parameters(model)
 N_params = sum(t.numel() for t in params)
 print(f"{N_params // 1e6}M params")
